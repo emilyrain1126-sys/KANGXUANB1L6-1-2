@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>〈那默默的一群〉賓果挑戰</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .bingo-cell {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+            border: 3px solid #cbd5e1;
+            min-height: 100px;
+            /* 調整文字大小以容納更多內容 */
+            font-size: 1.1rem;
+            line-height: 1.4;
+        }
+        .answered-correct {
+            background-color: #22c55e !important;
+            color: white;
+            border-color: #15803d !important;
+            animation: pulse-green 1s ease-out;
+        }
+        .answered-incorrect {
+            background-color: #f87171 !important;
+            color: white;
+            border-color: #dc2626 !important;
+        }
+        .bingo-line {
+            background-color: #facc15 !important;
+            color: #78350f !important;
+            font-weight: bold;
+            animation: wobble 0.5s infinite;
+        }
+        @keyframes pulse-green {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="p-4">
+    
+    <!-- 1. 分組排名選擇畫面 -->
+    <div id="rank-selection-screen" class="w-full max-w-2xl bg-white rounded-xl shadow-2xl p-6 md:p-8 text-center">
+        <h2 class="text-3xl font-extrabold text-gray-800 mb-4 text-indigo-600">
+            🎲 選擇本組今日排名
+        </h2>
+        <p class="text-gray-600 mb-8 text-lg">
+            請根據分組競賽的總體成績，選擇本組的排名區間，以決定本次挑戰的**總答錯機會次數**。
+        </p>
+
+        <div class="space-y-4">
+            <button onclick="startGame(4)" class="w-full py-4 bg-green-500 hover:bg-green-600 text-white text-xl font-bold rounded-xl transition duration-150 shadow-lg transform hover:scale-[1.01]">
+                🏆 排名 1-2 名 - 獲得 4 次答錯機會
+            </button>
+            <button onclick="startGame(3)" class="w-full py-4 bg-yellow-500 hover:bg-yellow-600 text-gray-900 text-xl font-bold rounded-xl transition duration-150 shadow-lg transform hover:scale-[1.01]">
+                ✨ 排名 3-5 名 - 獲得 3 次答錯機會
+            </button>
+        </div>
+
+        <p class="text-sm text-gray-500 mt-6">
+            選擇後將立即開始遊戲，請確認！
+        </p>
+    </div>
+
+
+    <!-- 2. 主容器：Bingo 遊戲 -->
+    <div id="app" class="w-full max-w-2xl bg-white rounded-xl shadow-2xl p-6 md:p-8 hidden relative">
+        
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6 border-b-4 border-yellow-500 pb-2">
+            〈那默默的一群〉賓果挑戰
+        </h1>
+        <p class="text-center text-sm text-gray-600 mb-4">
+            點擊格子查看題目，作答後即可標記結果並計算連線數。（**所有題目共享答錯機會**）
+        </p>
+
+        <!-- 賓果網格 (3x3) -->
+        <div id="bingo-grid" class="grid grid-cols-3 gap-3 md:gap-4">
+            <!-- 格子將由 JavaScript 動態生成 -->
+        </div>
+
+        <!-- 遊戲狀態與計分區 -->
+        <div class="mt-8 p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded-lg shadow-inner">
+            <div class="text-xl font-bold text-gray-800 mb-2">挑戰狀態：</div>
+            <p id="correct-count" class="text-lg text-gray-700">✅ 答對題數：<span class="font-bold text-green-600">0</span> / 9</p>
+            <p id="bingo-count" class="text-lg text-gray-700">🏆 完成連線：<span class="font-bold text-yellow-700">0</span> 條</p>
+            
+            <!-- 總分欄位 -->
+            <p id="total-score" class="text-xl text-gray-800 font-extrabold mt-3 border-t pt-2">
+                總分：<span class="text-indigo-600">0</span> 分
+            </p>
+            
+            <!-- 剩餘機會顯示 -->
+            <p class="text-lg text-gray-700">❌ 剩餘答錯機會：<span id="attempts-left-display" class="font-bold text-red-600">0 / 0</span></p>
+            
+            <p id="status-message" class="mt-3 text-red-600 font-semibold hidden">恭喜！你們完成連線了！</p>
+        </div>
+    </div>
+
+    <!-- 模態框 (Modal) - 用於顯示題目和選項 -->
+    <div id="question-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex justify-center items-center p-4 hidden">
+        <div class="bg-white rounded-xl p-6 md:p-8 w-full max-w-lg shadow-2xl transform transition-all duration-300">
+            
+            <!-- 標題與關閉按鈕容器 (Flex 佈局) -->
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h3 class="text-xl font-bold text-gray-800 mr-4" id="modal-title"></h3>
+                <!-- 關閉按鈕 -->
+                <button onclick="closeModal()" class="w-24 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg transition duration-150 shadow-md flex-shrink-0">
+                    關閉
+                </button>
+            </div>
+            
+            <p class="text-gray-700 mb-6 text-lg" id="modal-question-text"></p>
+
+            <!-- 選項區 -->
+            <div id="modal-options" class="space-y-3">
+                <!-- 選項將由 JavaScript 動態生成 -->
+            </div>
+
+            <!-- 結果訊息 -->
+            <div id="result-message" class="mt-6 p-3 rounded-lg text-center font-bold hidden"></div>
+
+            <!-- 底部用於間隔 -->
+            <div class="mt-4"></div>
+        </div>
+    </div>
+
+    <script>
+        // ----------------------------------------------------
+        // 1. 題目數據 (最終定案版本)
+        // ----------------------------------------------------
+        const OPTIONS_LABELS = ['A', 'B', 'C', 'D'];
+        const QUESTIONS = [
+            {
+                id: 1,
+                core: '修辭 (譬喻)',
+                question: '「像士兵們護衛疆土那樣」一句，運用了何種修辭技巧？',
+                options: ['譬喻', '轉化', '誇飾', '設問'],
+                answerIndex: 0, // A
+            },
+            {
+                id: 2,
+                core: '比喻',
+                question: '課文中將這「默默的一群」比喻成什麼？',
+                options: ['忠實的牧羊人', '堅毅的駱駝隊', '戴盔甲的騎士', '護衛著疆土的士兵'],
+                answerIndex: 3, // D
+            },
+            {
+                id: 3,
+                core: '詞語理解 (默默)',
+                question: '「負責道路清潔的那默默的一群，以忠實的態度，護衛著一條條長長的街道和巷弄。」句中「默默」二字點出清道婦的何種精神？',
+                options: [
+                    '不張揚不表功，認真努力的奉獻精神',
+                    '清晨氣氛寧靜，避免擾人的體貼精神',
+                    '凌晨摸黑起床，睡意猶睏的刻苦精神',
+                    '專注完成工作，無暇說話的積極精神'
+                ],
+                answerIndex: 0, // A
+            },
+            {
+                id: 4,
+                core: '成語應用 (仔細)',
+                question: '「別看她們所負責的路段是那樣寬長，她們卻忠實的一掃把一掃把的掃過來。」下列何者最適合用來形容清道婦打掃的情形？',
+                options: ['老當益壯', '鉅細靡遺', '前倨後恭', '鞭長莫及'],
+                answerIndex: 1, // B
+            },
+            {
+                id: 5,
+                core: '文意 (時間)',
+                question: '「披著一身淡淡的夜色，便開始工作」這句話主要描寫了清道婦工作的哪個面向？',
+                options: ['他們工作的時間很短暫', '他們工作時會遮蓋面容', '他們開始工作時天色未亮', '他們工作總是在深夜進行'],
+                answerIndex: 2, // C
+            },
+            {
+                id: 6,
+                core: '課文細節',
+                question: '課文中提到，當「我」看到他們的時候，他們的清掃工作處於哪種狀態？',
+                options: ['正準備開始打掃', '正要收工休息', '已經開始很久了', '正在整理打掃工具'],
+                answerIndex: 2, // C
+            },
+            {
+                id: 7,
+                core: '工作心態 (職責)',
+                question: '「凡被認為是垃圾的那些東西出現在他們的防區，他們便予以清除。」這句話表現出清道婦的何種工作心態？',
+                options: ['天上天下，唯我獨尊', '一夫當關，萬夫莫敵', '兵來將擋，水來土掩', '職責所在，義不容辭'],
+                answerIndex: 3, // D
+            },
+            {
+                id: 8,
+                core: '文意理解 (範圍)',
+                question: '「我不知道她們是自什麼地方掃起，也不知道她們掃到什麼地方為止。」這句話主要說明了什麼？',
+                options: ['清道婦的工作範圍極廣，責任不輕', '作者對清道婦工作內容不關心', '清道婦工作方式非常隱密', '清潔工作經常變換地點'],
+                answerIndex: 0, // A
+            },
+            {
+                id: 9,
+                core: '注音/字形填空',
+                question: '「那個『　』生人沉『　』不語的坐在角落，顯得有些落『　』，『　』非他覺得我們對他太過冷『　』？」上述文句『　』中的字，依序應為下列何者？',
+                options: ['陌／默／漠／莫／寞', '漠／默／寞／莫／陌', '漠／默／漠／漠／莫', '陌／默／寞／莫／漠'],
+                answerIndex: 3, // D
+            },
+        ];
+
+        // 賓果狀態追蹤：
+        // 結構：{state: number (0/1/2), choice: string ('A'/'B'/'C'/'D'或其他)}
+        let quizState = Array(9).fill().map(() => ({ state: 0, choice: '' }));
+        
+        // 全局狀態追蹤
+        let totalFailedAttempts = 0;
+        let TOTAL_MAX_ATTEMPTS = 0; 
+        let currentQuestionIndex = -1; 
+        let autoCloseTimer; 
+        let failedOptions = []; 
+        
+        const BINGO_LINES = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], 
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], 
+            [0, 4, 8], [2, 4, 6]            
+        ];
+
+        // ----------------------------------------------------
+        // 2. DOM 元素獲取
+        // ----------------------------------------------------
+        const rankScreen = document.getElementById('rank-selection-screen'); 
+        const bingoApp = document.getElementById('app'); 
+        const bingoGrid = document.getElementById('bingo-grid');
+        const modal = document.getElementById('question-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalQuestionText = document.getElementById('modal-question-text');
+        const modalOptions = document.getElementById('modal-options');
+        const resultMessage = document.getElementById('result-message');
+        const correctCountEl = document.querySelector('#correct-count span');
+        const bingoCountEl = document.querySelector('#bingo-count span');
+        const totalScoreEl = document.querySelector('#total-score span');
+        const statusMessageEl = document.getElementById('status-message');
+        const attemptsDisplayEl = document.getElementById('attempts-left-display');
+
+        // ----------------------------------------------------
+        // 3. 核心遊戲邏輯
+        // ----------------------------------------------------
+        
+        /**
+         * 更新剩餘答錯機會的顯示
+         */
+        function updateAttemptsDisplay() {
+            const attemptsLeft = TOTAL_MAX_ATTEMPTS - totalFailedAttempts;
+            attemptsDisplayEl.textContent = `${Math.max(0, attemptsLeft)} / ${TOTAL_MAX_ATTEMPTS}`;
+            if (attemptsLeft <= 0) {
+                attemptsDisplayEl.classList.add('text-red-600');
+            } else {
+                attemptsDisplayEl.classList.remove('text-red-600');
+            }
+        }
+
+        /**
+         * 重新渲染選項區域
+         */
+        function reRenderOptions(index, disableAll = false, failedOptions = []) {
+            const question = QUESTIONS[index];
+            modalOptions.innerHTML = '';
+
+            question.options.forEach((option, idx) => {
+                const label = ['(A)', '(B)', '(C)', '(D)'][idx];
+                const button = document.createElement('button');
+                
+                let buttonClasses = 'w-full text-left py-3 px-4 rounded-lg border-2 border-gray-300 text-gray-700 font-medium transition duration-150';
+                
+                button.className = buttonClasses;
+                button.textContent = `${label} ${option}`;
+
+                if (failedOptions.includes(idx)) {
+                    button.disabled = true;
+                    button.classList.remove('hover:bg-gray-100');
+                    button.classList.add('bg-gray-200', 'text-gray-500', 'cursor-not-allowed');
+                } else if (disableAll) {
+                    button.disabled = true;
+                    button.classList.add('cursor-not-allowed');
+                } else {
+                    button.classList.add('hover:bg-gray-100');
+                    button.onclick = () => checkAnswer(idx);
+                }
+                
+                modalOptions.appendChild(button);
+            });
+        }
+
+
+        /**
+         * 檢查賓果連線數並更新UI 
+         * @returns {number} 返回目前的連線數
+         */
+        function checkBingo() {
+            let bingoCount = 0;
+            const cells = bingoGrid.children;
+
+            Array.from(cells).forEach(cell => cell.classList.remove('bingo-line'));
+
+            BINGO_LINES.forEach((line) => {
+                const [i, j, k] = line;
+                
+                // 檢查狀態的 state 屬性
+                const isBingo = quizState[i].state === 2 && quizState[j].state === 2 && quizState[k].state === 2;
+                
+                if (isBingo) {
+                    bingoCount++;
+                    cells[i].classList.add('bingo-line');
+                    cells[j].classList.add('bingo-line');
+                    cells[k].classList.add('bingo-line');
+                }
+            });
+
+            bingoCountEl.textContent = bingoCount;
+            if (bingoCount > 0) {
+                statusMessageEl.classList.remove('hidden');
+            } else {
+                statusMessageEl.classList.add('hidden');
+            }
+            return bingoCount;
+        }
+
+        /**
+         * 檢查答案並更新狀態
+         */
+        function checkAnswer(selectedIndex) {
+            const question = QUESTIONS[currentQuestionIndex];
+            const isCorrect = selectedIndex === question.answerIndex;
+            const selectedChoiceLabel = OPTIONS_LABELS[selectedIndex];
+            
+            clearTimeout(autoCloseTimer);
+            resultMessage.classList.remove('hidden');
+            
+            if (isCorrect) {
+                if (quizState[currentQuestionIndex].state !== 2) {
+                    quizState[currentQuestionIndex].state = 2;
+                    quizState[currentQuestionIndex].choice = selectedChoiceLabel; // 儲存選項
+                }
+
+                resultMessage.className = 'mt-6 p-3 rounded-lg text-center font-bold bg-green-100 text-green-700';
+                resultMessage.textContent = '✅ 答對了！恭喜獲得此格。';
+                
+                reRenderOptions(currentQuestionIndex, true); 
+                modalOptions.children[selectedIndex].classList.add('bg-green-500', 'text-white');
+
+                updateGridCell(currentQuestionIndex);
+                updateScore();
+                updateAttemptsDisplay();
+                autoCloseTimer = setTimeout(closeModal, 15000); 
+
+            } else {
+                if (quizState[currentQuestionIndex].state === 0) {
+                    totalFailedAttempts++; 
+                }
+                
+                failedOptions.push(selectedIndex); 
+
+                const newAttemptsLeft = TOTAL_MAX_ATTEMPTS - totalFailedAttempts;
+                
+                resultMessage.className = 'mt-6 p-3 rounded-lg text-center font-bold bg-red-100 text-red-700';
+                updateAttemptsDisplay(); 
+                    
+                if (newAttemptsLeft < 0) { 
+                    if (quizState[currentQuestionIndex].state === 0) {
+                        quizState[currentQuestionIndex].state = 1; 
+                        quizState[currentQuestionIndex].choice = selectedChoiceLabel; // 儲存最後一次選項
+                    }
+                    
+                    resultMessage.textContent = `❌ 答錯了！所有機會已用盡。正確答案是 ${['(A)', '(B)', '(C)', '(D)'][question.answerIndex]}。`;
+                    
+                    reRenderOptions(currentQuestionIndex, true); 
+                    modalOptions.children[question.answerIndex].classList.add('border-4', 'border-green-500', 'bg-green-50');
+                    
+                    updateGridCell(currentQuestionIndex);
+                    updateScore();
+                    autoCloseTimer = setTimeout(closeModal, 15000);
+
+                } else {
+                    if (newAttemptsLeft === 0) {
+                         resultMessage.textContent = `❌ 答錯了！你已用盡所有 ${TOTAL_MAX_ATTEMPTS} 次機會。此題無法再作答。`;
+                         
+                         quizState[currentQuestionIndex].state = 1;
+                         quizState[currentQuestionIndex].choice = selectedChoiceLabel; // 儲存選項
+                         reRenderOptions(currentQuestionIndex, true); 
+                         modalOptions.children[question.answerIndex].classList.add('border-4', 'border-green-500', 'bg-green-50');
+
+                         updateGridCell(currentQuestionIndex);
+                         updateScore();
+                         autoCloseTimer = setTimeout(closeModal, 15000); 
+
+                    } else {
+                        resultMessage.textContent = `❌ 答錯了！你還有 ${newAttemptsLeft} 次機會。請重新選擇。`;
+                        
+                        setTimeout(() => {
+                            reRenderOptions(currentQuestionIndex, false, failedOptions); 
+                            modalTitle.textContent = `第 ${currentQuestionIndex + 1} 題 (剩餘機會: ${newAttemptsLeft})`;
+                            resultMessage.classList.add('hidden'); 
+                        }, 1000); 
+                    }
+                } 
+            }
+        }
+
+        /**
+         * 更新單個賓果格子的樣式
+         */
+        function updateGridCell(index) {
+            const cell = bingoGrid.children[index];
+            const stateObj = quizState[index];
+
+            cell.classList.remove('answered-correct', 'answered-incorrect', 'text-white'); 
+            
+            if (stateObj.state === 2) {
+                cell.classList.add('answered-correct', 'text-white');
+                // 顯示：✅ 答對 (A)
+                cell.innerHTML = `✅ 答對<br/>(${stateObj.choice})`;
+            } else if (stateObj.state === 1) {
+                cell.classList.add('answered-incorrect', 'text-white');
+                 // 顯示：❌ 答錯 (B)
+                cell.innerHTML = `❌ 答錯<br/>(${stateObj.choice})`;
+            } else {
+                cell.textContent = `Q${index + 1}`;
+            }
+        }
+
+        /**
+         * 更新答對題數和總分顯示
+         */
+        function updateScore() {
+            // 計算答對題數：只計算 state === 2 的
+            const correctCount = quizState.filter(item => item.state === 2).length;
+            
+            const bingoCount = checkBingo();
+            
+            const attemptsLeft = Math.max(0, TOTAL_MAX_ATTEMPTS - totalFailedAttempts);
+
+            const totalScore = correctCount + bingoCount + attemptsLeft;
+
+            correctCountEl.textContent = totalScore;
+            totalScoreEl.textContent = totalScore;
+        }
+
+        // ----------------------------------------------------
+        // 4. 模態框 (Modal) 處理
+        // ----------------------------------------------------
+
+        /**
+         * 顯示題目模態框
+         */
+        function openModal(index) {
+            currentQuestionIndex = index;
+            const question = QUESTIONS[index];
+            
+            clearTimeout(autoCloseTimer); 
+            
+            const stateObj = quizState[index];
+            const attemptsLeft = TOTAL_MAX_ATTEMPTS - totalFailedAttempts;
+            
+            if (stateObj.state !== 0) {
+                modalTitle.textContent = `第 ${index + 1} 題 (已作答：${stateObj.choice})`;
+            } else {
+                modalTitle.textContent = `第 ${index + 1} 題 (剩餘機會: ${attemptsLeft})`;
+            }
+            
+            modalQuestionText.textContent = question.question;
+            modalOptions.innerHTML = '';
+            resultMessage.classList.add('hidden');
+            failedOptions = []; 
+
+            if (stateObj.state !== 0) {
+                reRenderOptions(index, true); 
+                
+                const correctBtn = modalOptions.children[question.answerIndex];
+                
+                if (stateObj.state === 2) {
+                    resultMessage.className = 'mt-6 p-3 rounded-lg text-center font-bold bg-green-100 text-green-700';
+                    resultMessage.textContent = `✅ 此題已答對！你選擇了 (${stateObj.choice})`;
+                    correctBtn.classList.add('bg-green-500', 'text-white');
+                } else if (stateObj.state === 1) {
+                    resultMessage.className = 'mt-6 p-3 rounded-lg text-center font-bold bg-red-100 text-red-700';
+                    resultMessage.textContent = `❌ 此題已答錯，機會已用盡。你選擇了 (${stateObj.choice})，正確答案是 ${OPTIONS_LABELS[question.answerIndex]}。`;
+                    correctBtn.classList.add('border-4', 'border-green-500', 'bg-green-50');
+                }
+                resultMessage.classList.remove('hidden');
+
+            } 
+            else {
+                reRenderOptions(index, false, failedOptions); 
+                if (attemptsLeft <= 0) {
+                    resultMessage.classList.remove('hidden');
+                    resultMessage.className = 'mt-6 p-3 rounded-lg text-center font-bold bg-red-100 text-red-700';
+                    resultMessage.textContent = `⚠️ 注意：所有答錯機會已用盡，請謹慎作答！`;
+                }
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        /**
+         * 隱藏題目模態框
+         */
+        function closeModal() {
+            clearTimeout(autoCloseTimer);
+            modal.classList.add('hidden');
+            currentQuestionIndex = -1;
+            checkBingo(); 
+        }
+
+        /**
+         * 初始化賓果網格
+         */
+        function initializeGrid() {
+            bingoGrid.innerHTML = '';
+            QUESTIONS.forEach((q, index) => {
+                const cell = document.createElement('div');
+                cell.id = `cell-${index}`;
+                cell.className = 'bingo-cell flex items-center justify-center p-3 rounded-lg bg-gray-50 hover:bg-yellow-100 text-xl font-bold text-gray-700 select-none';
+                cell.textContent = `Q${index + 1}`;
+                cell.onclick = () => openModal(index);
+                bingoGrid.appendChild(cell);
+            });
+            updateScore();
+            checkBingo();
+            updateAttemptsDisplay(); 
+        }
+
+        /**
+         * 設置排名並開始遊戲
+         */
+        function startGame(attempts) {
+            TOTAL_MAX_ATTEMPTS = attempts; 
+
+            rankScreen.classList.add('hidden');
+            bingoApp.classList.remove('hidden');
+
+            // 重置 quizState 結構
+            quizState = Array(9).fill().map(() => ({ state: 0, choice: '' }));
+            totalFailedAttempts = 0; 
+
+            initializeGrid();
+        }
+
+        // ----------------------------------------------------
+        // 5. 啟動應用程式
+        // ----------------------------------------------------
+        window.onload = function() {
+            rankScreen.classList.remove('hidden');
+            bingoApp.classList.add('hidden');
+            
+            // 將 startGame/closeModal 函式暴露給按鈕點擊事件
+            window.startGame = startGame;
+            window.closeModal = closeModal;
+        };
+    </script>
+</body>
+</html>
